@@ -4,27 +4,35 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 func TestLoadCreatesDefaultsWhenMissing(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
+	path := filepath.Join(dir, "config.toml")
 
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	def := Default()
-	if *cfg != *def {
-		t.Fatalf("expected defaults %+v, got %+v", def, cfg)
+	if cfg.Edge != def.Edge || cfg.Size != def.Size || cfg.Alignment != def.Alignment {
+		t.Fatalf("Load did not return defaults: %+v", cfg)
+	}
+
+	// The file should now exist and round-trip through Load again.
+	cfg2, err := Load(path)
+	if err != nil {
+		t.Fatalf("second Load: %v", err)
+	}
+	if cfg2.BackgroundColor != cfg.BackgroundColor {
+		t.Fatalf("round-tripped config differs: %+v vs %+v", cfg, cfg2)
 	}
 }
 
-func TestLoadAppliesBoundsForPartialFile(t *testing.T) {
+func TestLoadAppliesDefaultsForPartialFile(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := writeFile(path, "color: \"#00FF00\"\n"); err != nil {
+	path := filepath.Join(dir, "config.toml")
+	if err := writeFile(path, "edge = \"left\"\n"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -32,102 +40,79 @@ func TestLoadAppliesBoundsForPartialFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Color != "#00FF00" {
-		t.Errorf("Color = %q, want #00FF00", cfg.Color)
+	if cfg.Edge != EdgeLeft {
+		t.Fatalf("Edge = %q, want left", cfg.Edge)
 	}
-	if cfg.Mode != Default().Mode {
-		t.Errorf("Mode = %q, want default %q", cfg.Mode, Default().Mode)
+	if cfg.Size != Default().Size {
+		t.Fatalf("Size = %d, want default %d", cfg.Size, Default().Size)
 	}
-	if cfg.FPS != Default().FPS {
-		t.Errorf("FPS = %d, want default %d", cfg.FPS, Default().FPS)
+	if cfg.ClockFormat != Default().ClockFormat {
+		t.Fatalf("ClockFormat = %q, want default", cfg.ClockFormat)
 	}
 }
 
-func TestLoadRejectsUnknownMode(t *testing.T) {
+func TestLoadRejectsInvalidEdge(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := writeFile(path, "mode: rainbow\n"); err != nil {
+	path := filepath.Join(dir, "config.toml")
+	if err := writeFile(path, "edge = \"diagonal\"\n"); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := Load(path); err == nil {
-		t.Fatal("expected error for unknown mode, got nil")
+		t.Fatal("expected error for invalid edge, got nil")
 	}
 }
 
-func TestLoadRejectsBadColor(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := writeFile(path, "color: not-a-color\n"); err != nil {
-		t.Fatal(err)
+func TestApplyBoundsAndDefaultsClampsOpacity(t *testing.T) {
+	cfg := Default()
+	cfg.BackgroundOpacity = 5
+	cfg.applyBoundsAndDefaults()
+	if cfg.BackgroundOpacity != 1 {
+		t.Fatalf("BackgroundOpacity = %v, want clamped to 1", cfg.BackgroundOpacity)
 	}
 
-	if _, err := Load(path); err == nil {
-		t.Fatal("expected error for invalid color, got nil")
+	cfg.BackgroundOpacity = -3
+	cfg.applyBoundsAndDefaults()
+	if cfg.BackgroundOpacity != 0 {
+		t.Fatalf("BackgroundOpacity = %v, want clamped to 0", cfg.BackgroundOpacity)
 	}
 }
 
 func TestParseColor(t *testing.T) {
-	cases := []struct {
+	tests := []struct {
 		in      string
 		want    RGB
 		wantErr bool
 	}{
 		{"#FF33AA", RGB{0xFF, 0x33, 0xAA}, false},
-		{"ff33aa", RGB{0xFF, 0x33, 0xAA}, false},
-		{"#000000", RGB{0, 0, 0}, false},
+		{"3AA0FF", RGB{0x3A, 0xA0, 0xFF}, false},
 		{"#zzzzzz", RGB{}, true},
-		{"#fff", RGB{}, true},
+		{"#FFF", RGB{}, true},
 	}
-	for _, c := range cases {
-		got, err := ParseColor(c.in)
-		if (err != nil) != c.wantErr {
-			t.Errorf("ParseColor(%q) error = %v, wantErr %v", c.in, err, c.wantErr)
+	for _, tt := range tests {
+		got, err := ParseColor(tt.in)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("ParseColor(%q): expected error, got %+v", tt.in, got)
+			}
 			continue
 		}
-		if err == nil && got != c.want {
-			t.Errorf("ParseColor(%q) = %+v, want %+v", c.in, got, c.want)
+		if err != nil {
+			t.Errorf("ParseColor(%q): unexpected error: %v", tt.in, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("ParseColor(%q) = %+v, want %+v", tt.in, got, tt.want)
 		}
 	}
 }
 
-func TestWatcherDetectsChange(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "config.yaml")
-	if err := writeFile(path, "opacity: 0.5\n"); err != nil {
-		t.Fatal(err)
+func TestEdgeHorizontal(t *testing.T) {
+	if !EdgeTop.Horizontal() || !EdgeBottom.Horizontal() {
+		t.Error("top/bottom should be horizontal")
 	}
-
-	w := NewWatcher(path)
-	cfg, changed, err := w.Poll()
-	if err != nil {
-		t.Fatalf("first Poll: %v", err)
-	}
-	if !changed || cfg.Opacity != 0.5 {
-		t.Fatalf("first Poll: changed=%v cfg=%+v, want changed with opacity 0.5", changed, cfg)
-	}
-
-	_, changed, err = w.Poll()
-	if err != nil {
-		t.Fatalf("second Poll: %v", err)
-	}
-	if changed {
-		t.Fatal("second Poll reported changed with no file modification")
-	}
-
-	// Ensure the mtime strictly advances on filesystems with coarse
-	// resolution before rewriting the file.
-	time.Sleep(10 * time.Millisecond)
-	if err := writeFile(path, "opacity: 0.9\n"); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, changed, err = w.Poll()
-	if err != nil {
-		t.Fatalf("third Poll: %v", err)
-	}
-	if !changed || cfg.Opacity != 0.9 {
-		t.Fatalf("third Poll: changed=%v cfg=%+v, want changed with opacity 0.9", changed, cfg)
+	if EdgeLeft.Horizontal() || EdgeRight.Horizontal() {
+		t.Error("left/right should not be horizontal")
 	}
 }
 

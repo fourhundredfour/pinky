@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+    font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+}
+
+:root {
+  --pinky-accent: #3aa0ff;
+  --pinky-bg: #101014;
+  --pinky-bg-opacity: 0.85;
+}
+
+.pinky-monochrome img.task-icon {
+  filter: grayscale(1) brightness(1.1);
+}

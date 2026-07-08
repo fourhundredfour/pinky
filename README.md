@@ -2,76 +2,68 @@
 
 # 🌸 pinky
 
-**Give your Windows 11 taskbar a colored makeover — without losing your icons.**
+**A fast, fully customizable Windows 11 taskbar replacement.**
 
-Turn every taskbar icon monochrome, tinted pink, or any color you like, while staying perfectly recognizable — like a color filter laid over your taskbar.
+Docks to any screen edge, shows your open windows, the clock, and system indicators (battery/network/volume) - transparent, rounded or square, left/center/right aligned, monochrome icons, all live-reloadable from a single TOML file.
 
 </div>
 
 ---
 
-## ✨ What it does
+## ✨ Features
 
-pinky sits quietly on top of your taskbar and recolors it live, using the same kind of "blend mode + opacity" trick you'd use on a layer in Photoshop. Your icons keep their shapes and details — only their color changes.
+- 🪟 **Open windows** - icons for every open app, click to focus, middle-click to close
+- 🕒 **Clock** - configurable time/date format
+- 🔋 **System indicators** - battery, network, volume, with click-through to Windows' own Quick Settings flyouts
+- 🎨 **Fully customizable** - dock edge, thickness, alignment, transparency, square/rounded corners, monochrome icons
+- ⚡ **Live-reloading TOML config** - edit `config.toml`, save, see it applied instantly - no restart
 
-- 🎨 Pick any color
-- 🌗 Control the strength (opacity)
-- 🪄 Choose how it blends: monochrome, tint, multiply, or color
-- 🎯 Colors only the **icons and text**
-- ⚡ Updates live, runs quietly in your system tray
-- 🖥️ Works across all your monitors
+> **Scope:** primary monitor only, and only Windows' own system tray flyouts - no capturing of third-party tray icons yet.
+
+## 📋 Requirements
+
+- Windows 11 (or Windows 10 2004+)
+- The [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) - already preinstalled on Windows 11 and current Windows 10 builds.
 
 ## 📥 Installation
 
-1. Go to the [Releases](../../releases) page and download the latest `pinky-windows-amd64.exe` (or `pinky-windows-arm64.exe` if you're on an ARM-based Windows PC).
+1. Go to the [Releases](../../releases) page and download the latest `pinky-windows-amd64.exe`.
 2. Put it anywhere you like, e.g. `C:\Tools\pinky\`.
-3. Double-click it to run. A tray icon will appear, and your taskbar will start changing color.
+3. Double-click it to run. Windows' own taskbar hides, pinky's bar appears in its place, and a tray icon shows up for settings/reload/quit.
 
-> **Note:** pinky needs Windows 11 (or Windows 10 version 2004+).
+The first run creates `%AppData%\pinky\config.toml` (i.e. `C:\Users\<you>\AppData\Roaming\pinky\config.toml`) pre-filled with defaults. Edit it in any text editor and save - pinky picks up the change within a fraction of a second.
 
-## 🚀 Getting started
+## 🔧 Configuration
 
-The first time pinky runs, it creates a `config.yaml` file next to the `.exe` with defaults — a pink monochrome look at 80% strength. Open that file in any text editor to customize it, save, and pinky will pick up your changes automatically within a second — no restart needed.
+See `config.example.toml` for the full, commented reference. Every field:
 
-```yaml
-enabled: true          # turn the effect on/off
-color: "#FF33AA"       # pick any color, as #RRGGBB
-opacity: 0.8           # how strong the effect is, from 0.0 to 1.0
-mode: monochrome       # monochrome | tint | multiply | color
-fps: 30                # how smoothly it updates
-include_tray: true     # also color the clock/system tray icons?
-icon_sensitivity: 0.5  # how much of each icon gets colored (0.0–1.0)
-```
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `edge` | `"top"\|"bottom"\|"left"\|"right"` | `"bottom"` | Screen edge the bar docks to |
+| `size` | int (px) | `48` | Bar thickness (height if top/bottom, width if left/right) |
+| `alignment` | `"left"\|"center"\|"right"` | `"center"` | Where the open-window icons sit; clock/indicators always stay at the far end |
+| `shape` | `"square"\|"rounded"` | `"rounded"` | Bar corner style (uses DWM rounded corners on Windows 11) |
+| `background_color` | `"#RRGGBB"` | `"#101014"` | Bar background color |
+| `background_opacity` | float `0.0`-`1.0` | `0.85` | Bar background strength; `0` is fully transparent |
+| `accent_color` | `"#RRGGBB"` | `"#3AA0FF"` | Highlights the active window / hover states |
+| `monochrome_icons` | bool | `false` | Desaturate running-app icons for a flatter look |
+| `clock_format` | Go time layout | `"15:04"` | e.g. `"03:04 PM"` for 12h |
+| `date_format` | Go time layout | `"Monday, 02 January 2006"` | Used for the clock's tooltip |
+| `show_tasks` / `show_clock` / `show_battery` / `show_network` / `show_volume` | bool | `true` | Toggle individual widgets off without losing their settings |
+| `hide_real_taskbar` | bool | `true` | Hide Explorer's own taskbar while pinky runs (restored on exit); turn off to run both side by side, e.g. while developing |
+| `tasks_poll_interval_ms` | int | `1500` | Fallback poll interval for the open-window list (in addition to live shell-hook notifications) |
+| `indicators_poll_interval_ms` | int | `2000` | Poll interval for battery/network/volume |
+| `monitor` | `"primary"` | `"primary"` | Reserved for future multi-monitor support |
 
-> pinky colors just the icon and text pixels, leaving the space between them untouched — so a transparent or "hidden" taskbar stays transparent. If some faint icon detail isn't getting colored, nudge `icon_sensitivity` up; if you see stray specks, nudge it down.
-
-## 🎨 Blend modes
-
-| Mode | Look |
-|---|---|
-| 🖤 `monochrome` | Classic effect — icons turn grayscale, then get tinted with your color. Great for an "all-pink taskbar" look. |
-| 🖌️ `tint` | A flat colored film over everything, like a stained-glass overlay. |
-| ✖️ `multiply` | Darkens icons using your color — moodier, more saturated shadows. |
-| 🌈 `color` | Keeps each icon's brightness, just swaps its hue — the most "colorized photo" look. |
-
-## 🧰 Using the tray icon
-
-Click the pinky icon in your system tray to:
-
-- **Enable / Disable** — instantly toggle the effect
-- **Reload config** — force-apply changes you just saved
-- **Quit pinky** — close the app
+Use the tray icon's **"Open config.toml"** to jump straight to the file, and **"Reload config"** to force a re-read if your editor didn't trigger the file watcher.
 
 ## ❓ FAQ
 
-**Does this slow down my PC?**
-No — it only redraws a small strip of the screen, a handful of times per second. CPU usage is minimal.
+**Does this replace Explorer entirely?**
+No - only the taskbar window. Explorer itself, the Start menu, and desktop icons are untouched; pinky just hides the real taskbar and reserves its screen edge for itself.
 
-**Can I still click my taskbar icons normally?**
-Yes! The color layer never blocks clicks, hovering, or right-click menus.
+**What happens if `explorer.exe` restarts or crashes?**
+pinky listens for the systemwide `TaskbarCreated` broadcast and automatically re-hides the taskbar Explorer just recreated.
 
-**Only part of my taskbar gets colored / an icon is missing its color.**
-pinky finds icons using Windows' accessibility (UI Automation) data, which refreshes a few times a second. A brand-new icon might stay uncolored for a fraction of a second. If a whole category is never colored, it may be a newer Windows layout, please [open an issue](../../issues).
-
-**Will this break with a Windows update?**
-It's built on standard, documented Windows APIs, but if a future Windows update changes how the taskbar looks, please [open an issue](../../issues). Even if icon detection changes, pinky automatically falls back to a best-effort mode so the effect keeps working.
+**Can I run it alongside the real taskbar?**
+Yes - set `hide_real_taskbar = false` in the config.

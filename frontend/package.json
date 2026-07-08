@@ -1,0 +1,22 @@
+{
+  "name": "pinky-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.23.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@wailsio/runtime": "3.0.0-alpha.97",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "svelte": "^5.56.4",
+    "vite": "^8.1.3"
+  }
+}

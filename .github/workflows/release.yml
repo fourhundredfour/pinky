@@ -21,15 +21,28 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
       - name: Run unit tests
-        run: go test ./internal/config/... ./internal/blend/...
+        run: go test ./...
 
       - name: Build Windows binaries
         run: |
           mkdir -p dist
           GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/pinky-windows-amd64.exe .
           GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/pinky-windows-arm64.exe .
-          cp config.example.yaml dist/config.example.yaml
+          cp config.example.toml dist/config.example.toml
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -37,5 +50,5 @@ jobs:
           files: |
             dist/pinky-windows-amd64.exe
             dist/pinky-windows-arm64.exe
-            dist/config.example.yaml
+            dist/config.example.toml
           generate_release_notes: true

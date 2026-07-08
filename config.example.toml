@@ -1,0 +1,60 @@
+# pinky configuration.
+#
+# This file is created automatically next to the executable on first run
+# (as config.toml), pre-filled with these defaults. Edit it and save - pinky
+# picks up changes within a fraction of a second, no restart needed.
+
+# Which screen edge the bar docks to: "top", "bottom", "left", "right".
+edge = "bottom"
+
+# Bar thickness in pixels (height if docked top/bottom, width if left/right).
+size = 48
+
+# Where the open-window icons sit within the bar: "left", "center", "right".
+# The clock and system indicators always stay grouped at the far end.
+alignment = "center"
+
+# Corner style: "square" or "rounded".
+shape = "rounded"
+
+# Bar background color, as "#RRGGBB".
+background_color = "#101014"
+
+# Bar background strength, from 0.0 (fully transparent) to 1.0 (opaque).
+background_opacity = 0.85
+
+# Accent color used for the active window and hover states, as "#RRGGBB".
+accent_color = "#3AA0FF"
+
+# Desaturate running-app icons for a flatter, monochrome look.
+monochrome_icons = false
+
+# Clock format, using Go's reference-time layout (e.g. "15:04" for 24h,
+# "03:04 PM" for 12h).
+clock_format = "15:04"
+
+# Format used for the clock's date tooltip.
+date_format = "Monday, 02 January 2006"
+
+# Toggle individual widgets on/off.
+show_tasks = true
+show_clock = true
+show_battery = true
+show_network = true
+show_volume = true
+
+# Hide Windows' own taskbar while pinky is running (restored on exit).
+# Turn this off to run pinky side-by-side with the real taskbar, e.g. while
+# developing.
+hide_real_taskbar = true
+
+# Fallback poll interval (ms) for the open-window list, used alongside
+# shell-hook change notifications.
+tasks_poll_interval_ms = 1500
+
+# Poll interval (ms) for battery/network/volume.
+indicators_poll_interval_ms = 2000
+
+# Which display the bar appears on. Only "primary" is supported today;
+# multi-monitor support is a planned follow-up.
+monitor = "primary"

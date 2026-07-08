@@ -1,3 +1,5 @@
+//go:build windows
+
 package win32
 
 import (
@@ -15,21 +17,6 @@ var (
 	procCoUninitialize   = ole32.NewProc("CoUninitialize")
 	procCoCreateInstance = ole32.NewProc("CoCreateInstance")
 )
-
-// COINIT values for CoInitializeEx.
-const (
-	COINITApartmentThreaded = 0x2
-	COINITMultiThreaded     = 0x0
-)
-
-// CLSCTX values for CoCreateInstance.
-const (
-	CLSCTXInprocServer = 0x1
-	CLSCTXLocalServer  = 0x4
-	CLSCTXAll          = CLSCTXInprocServer | 0x2 | CLSCTXLocalServer | 0x10
-)
-
-// GUID is defined in shell32.go; CLSIDs and IIDs use the same layout.
 
 // GUIDFromString parses a GUID in the canonical registry form, with or
 // without surrounding braces, e.g. "{ff48dba4-60ef-4201-aa87-54103eef594e}".
@@ -160,3 +147,13 @@ func ComRelease(this uintptr) {
 
 // Failed reports whether an HRESULT-style return value indicates failure.
 func Failed(hr uintptr) bool { return int32(hr) < 0 }
+
+// mustGUID panics on an invalid literal; used for the small set of
+// compile-time-known CLSIDs/IIDs this project binds against.
+func MustGUID(s string) GUID {
+	g, err := GUIDFromString(s)
+	if err != nil {
+		panic(err)
+	}
+	return g
+}
