@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run unit tests
+        run: go test ./internal/config/... ./internal/blend/...
+
+      - name: Build Windows binaries
+        run: |
+          mkdir -p dist
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/pinky-windows-amd64.exe .
+          GOOS=windows GOARCH=arm64 go build -trimpath -ldflags "-s -w -H=windowsgui" -o dist/pinky-windows-arm64.exe .
+          cp config.example.yaml dist/config.example.yaml
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/pinky-windows-amd64.exe
+            dist/pinky-windows-arm64.exe
+            dist/config.example.yaml
+          generate_release_notes: true

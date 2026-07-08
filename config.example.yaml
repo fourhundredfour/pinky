@@ -1,0 +1,36 @@
+# pinky config
+#
+# Copy this file to config.yaml next to pinky.exe (or point --config at it).
+# Changes are picked up automatically within ~1 second, no restart needed.
+
+# Turn the whole overlay on/off without closing the app.
+enabled: true
+
+# Layer color, as a "#RRGGBB" hex string.
+color: "#FF33AA"
+
+# Layer strength, from 0.0 (real taskbar, untouched) to 1.0 (fully applied
+# effect). Values in between let some of the original icon colors show
+# through, like lowering a layer's opacity in Photoshop.
+opacity: 0.8
+
+# Blend mode - how the layer color combines with the real icon pixels:
+#   monochrome - desaturate to grayscale, then tint by `color` (classic
+#                "monochrome" look, e.g. all-pink icons that stay recognizable)
+#   tint       - flat "Normal" blend: replace with `color` at the given
+#                opacity (a simple, uniform colored film over the taskbar)
+#   multiply   - Photoshop "Multiply": darkens using `color`, keeps shadows
+#   color      - Photoshop "Color": keeps the icon's original brightness,
+#                but recolors its hue/saturation to `color`
+mode: monochrome
+
+# How many times per second the taskbar is re-captured and redrawn. 30 is
+# smooth for a strip this size; higher uses more CPU, lower may look laggy
+# on hover animations.
+fps: 30
+
+# true  = colorize the entire taskbar strip, including the system tray and
+#         clock (simplest, matches most "monochrome taskbar" looks)
+# false = leave the system tray/clock uncolored, only affect the rest of the
+#         taskbar (Start, search, task view, widgets, running app icons)
+include_tray: true
