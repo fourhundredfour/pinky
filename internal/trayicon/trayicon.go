@@ -1,3 +1,5 @@
+//go:build windows
+
 // Package trayicon sets up pinky's own system tray icon and right-click
 // menu (Settings/Reload/Quit) using Wails' native SystemTray manager.
 package trayicon
