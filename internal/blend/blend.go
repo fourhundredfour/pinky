@@ -17,19 +17,29 @@ type Params struct {
 }
 
 // Apply transforms pix (a BGRA buffer such as capture.Frame.Pix) in place
-// according to p.
+// according to p, using mask as a per-pixel content alpha (one byte per
+// pixel, same pixel order as pix). Pixels whose mask is 0 become fully
+// transparent so the real taskbar/wallpaper shows through untouched; only
+// masked-in glyph pixels get colored.
 //
-// Every mode first computes a "blend result" color from the source pixel
-// and the configured layer color, then the final output is
+// Each mode first computes a "blend result" color from the source pixel and
+// the configured layer color, then that is composited as
 // lerp(source, blendResult, Opacity) - exactly how a Photoshop layer with a
 // blend mode and an opacity slider composites against the layer below it.
-// The output alpha byte is always forced to 255: Opacity is baked into the
-// per-pixel math here (a software composite against the just-captured
-// source) rather than left for the OS compositor to blend against the
-// live/still-animating real taskbar underneath, which would otherwise cause
-// visible ghosting between our capture ticks.
-func Apply(pix []byte, p Params) {
+// The layer color is composited against the just-captured source here (in
+// software) rather than left for the OS compositor to blend against the
+// live/still-animating real taskbar, which would otherwise ghost between
+// capture ticks.
+//
+// Output is written as PREMULTIPLIED BGRA because the overlay draws with
+// AC_SRC_ALPHA: the final per-pixel alpha is (mask/255 * Opacity), and the
+// color channels are multiplied by that alpha. When mask is nil, every pixel
+// is treated as fully masked-in (alpha driven solely by Opacity).
+func Apply(pix []byte, mask []byte, p Params) {
 	if p.Opacity <= 0 {
+		for i := 0; i+3 < len(pix); i += 4 {
+			pix[i], pix[i+1], pix[i+2], pix[i+3] = 0, 0, 0, 0
+		}
 		return
 	}
 	opacity := p.Opacity
@@ -41,7 +51,20 @@ func Apply(pix []byte, p Params) {
 	cg := float64(p.Color.G) / 255
 	cb := float64(p.Color.B) / 255
 
-	for i := 0; i+3 < len(pix); i += 4 {
+	for i, px := 0, 0; i+3 < len(pix); i, px = i+4, px+1 {
+		coverage := 1.0
+		if mask != nil {
+			if px >= len(mask) {
+				break
+			}
+			coverage = float64(mask[px]) / 255
+		}
+		a := coverage * opacity
+		if a <= 0 {
+			pix[i], pix[i+1], pix[i+2], pix[i+3] = 0, 0, 0, 0
+			continue
+		}
+
 		b := float64(pix[i]) / 255
 		g := float64(pix[i+1]) / 255
 		r := float64(pix[i+2]) / 255
@@ -61,10 +84,14 @@ func Apply(pix []byte, p Params) {
 			rr, gg, bb = r, g, b
 		}
 
-		pix[i] = clampByte(lerp(b, bb, opacity))
-		pix[i+1] = clampByte(lerp(g, gg, opacity))
-		pix[i+2] = clampByte(lerp(r, rr, opacity))
-		pix[i+3] = 255
+		// Composite the layer over the source, then premultiply by alpha.
+		outR := lerp(r, rr, opacity)
+		outG := lerp(g, gg, opacity)
+		outB := lerp(b, bb, opacity)
+		pix[i] = clampByte(outB * a)
+		pix[i+1] = clampByte(outG * a)
+		pix[i+2] = clampByte(outR * a)
+		pix[i+3] = clampByte(a)
 	}
 }
 

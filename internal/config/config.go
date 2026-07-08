@@ -53,10 +53,17 @@ type Config struct {
 	Mode Mode `yaml:"mode"`
 	// FPS controls how often the taskbar is re-captured and re-drawn.
 	FPS int `yaml:"fps"`
-	// IncludeTray, when true (default), colorizes the entire taskbar strip
-	// including the system tray/clock. When false, the system tray/clock
-	// area is left uncolored so only the running-app icon band is affected.
+	// IncludeTray selects which icons are colorized. When true (default), the
+	// system tray / clock icons are colored in addition to the running-app
+	// and Start/search/widgets icons. When false, only the icons outside the
+	// system tray band are colored. Either way, only the icon glyphs get
+	// colored - never the taskbar background.
 	IncludeTray bool `yaml:"include_tray"`
+	// IconSensitivity in [0,1] controls how aggressively icon glyph pixels
+	// are separated from their background. Higher values color fainter parts
+	// of an icon (fuller coverage) at the risk of picking up background
+	// noise; lower values color only the most distinct glyph pixels.
+	IconSensitivity float64 `yaml:"icon_sensitivity"`
 }
 
 // RGB is a parsed 8-bit-per-channel color.
@@ -68,12 +75,13 @@ type RGB struct {
 // before a YAML file is parsed and as the fallback if no file exists yet.
 func Default() *Config {
 	return &Config{
-		Enabled:     true,
-		Color:       "#FF33AA",
-		Opacity:     0.8,
-		Mode:        ModeMonochrome,
-		FPS:         30,
-		IncludeTray: true,
+		Enabled:         true,
+		Color:           "#FF33AA",
+		Opacity:         0.8,
+		Mode:            ModeMonochrome,
+		FPS:             30,
+		IncludeTray:     true,
+		IconSensitivity: 0.5,
 	}
 }
 
@@ -135,6 +143,12 @@ func (c *Config) applyBoundsAndDefaults() {
 	}
 	if c.Opacity > 1 {
 		c.Opacity = 1
+	}
+	if c.IconSensitivity < 0 {
+		c.IconSensitivity = 0
+	}
+	if c.IconSensitivity > 1 {
+		c.IconSensitivity = 1
 	}
 }
 

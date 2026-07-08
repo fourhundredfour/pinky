@@ -29,8 +29,15 @@ mode: monochrome
 # on hover animations.
 fps: 30
 
-# true  = colorize the entire taskbar strip, including the system tray and
-#         clock (simplest, matches most "monochrome taskbar" looks)
-# false = leave the system tray/clock uncolored, only affect the rest of the
-#         taskbar (Start, search, task view, widgets, running app icons)
+#
+# include_tray chooses which icons are colored:
+#   true  = also color the system tray + clock icons (in addition to Start,
+#           search, task view, widgets and running-app icons)
+#   false = leave the system tray/clock alone, color only the other icons
 include_tray: true
+
+# How aggressively an icon's glyph is separated from its own background,
+# from 0.0 to 1.0. Higher values color fainter parts of an icon (fuller
+# coverage) but may pick up faint edges; lower values color only the most
+# distinct parts of each icon. 0.5 is a good default.
+icon_sensitivity: 0.5

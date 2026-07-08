@@ -129,6 +129,13 @@ func (b *Bar) Rect() win32.RECT {
 	return b.rect
 }
 
+// TrayRect returns the system tray/clock band's screen rectangle and whether
+// it is known. Used to decide which icon cells belong to the system tray
+// when the user asks to exclude it.
+func (b *Bar) TrayRect() (win32.RECT, bool) {
+	return b.trayRect, b.hasTray
+}
+
 // TargetRect returns the rectangle that should be colorized: the full
 // taskbar rect when includeTray is true, or that rect with the system
 // tray/clock band trimmed off the end when includeTray is false.

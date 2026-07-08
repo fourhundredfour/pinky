@@ -4,6 +4,7 @@ package app
 
 import (
 	"log"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -11,10 +12,19 @@ import (
 	"github.com/fourhundredfour/pinky/internal/blend"
 	"github.com/fourhundredfour/pinky/internal/capture"
 	"github.com/fourhundredfour/pinky/internal/config"
+	"github.com/fourhundredfour/pinky/internal/mask"
 	"github.com/fourhundredfour/pinky/internal/overlay"
 	"github.com/fourhundredfour/pinky/internal/taskbar"
+	"github.com/fourhundredfour/pinky/internal/uia"
 	"github.com/fourhundredfour/pinky/internal/win32"
 )
+
+// rectProvider supplies the current icon/button cell rectangles (screen
+// coordinates) for a taskbar window. Implemented by the UIA worker; an
+// interface so the render logic can be exercised with a fake in tests.
+type rectProvider interface {
+	RectsFor(hwnd win32.HWND) []win32.RECT
+}
 
 const (
 	timerRenderID uintptr = 1
@@ -53,6 +63,17 @@ type App struct {
 	controller win32.HWND
 	targets    []*monitorTarget
 
+	// rects provides icon cell rectangles; uiaWorker is the concrete
+	// implementation (kept separately so Run can start/stop it).
+	rects     rectProvider
+	uiaWorker *uia.Worker
+
+	// hwndList is a concurrency-safe snapshot of the taskbar window handles,
+	// read by the UIA worker goroutine and written on the message thread
+	// whenever the set of targets changes.
+	hwndMu   sync.Mutex
+	hwndList []win32.HWND
+
 	lastFPS int
 }
 
@@ -83,7 +104,30 @@ func New(cfgPath string) (*App, error) {
 		}
 		a.targets = append(a.targets, target)
 	}
+	a.syncHWNDs()
 	return a, nil
+}
+
+// syncHWNDs republishes the taskbar handle list for the UIA worker. Called
+// on the message thread whenever a.targets changes.
+func (a *App) syncHWNDs() {
+	list := make([]win32.HWND, 0, len(a.targets))
+	for _, t := range a.targets {
+		list = append(list, t.bar.HWND())
+	}
+	a.hwndMu.Lock()
+	a.hwndList = list
+	a.hwndMu.Unlock()
+}
+
+// currentHWNDs returns a copy of the tracked taskbar handles, safe to call
+// from the UIA worker goroutine.
+func (a *App) currentHWNDs() []win32.HWND {
+	a.hwndMu.Lock()
+	defer a.hwndMu.Unlock()
+	out := make([]win32.HWND, len(a.hwndList))
+	copy(out, a.hwndList)
+	return out
 }
 
 func newMonitorTarget(bar *taskbar.Bar) (*monitorTarget, error) {
@@ -119,6 +163,11 @@ func (a *App) Run() error {
 	defer a.closeTargets()
 	defer a.removeTrayIcon()
 
+	a.uiaWorker = uia.NewWorker(a.currentHWNDs)
+	a.rects = a.uiaWorker
+	a.uiaWorker.Start()
+	defer a.uiaWorker.Stop()
+
 	if _, err := win32.SetTimer(hwnd, timerRenderID, renderIntervalMs(a.cfg.FPS)); err != nil {
 		return err
 	}
@@ -131,8 +180,8 @@ func (a *App) Run() error {
 
 	a.setupTrayIcon()
 
-	log.Printf("pinky running (config: %s, mode: %s, color: %s, opacity: %.2f, fps: %d, include_tray: %v, monitors: %d)",
-		a.cfgPath, a.cfg.Mode, a.cfg.Color, a.cfg.Opacity, a.cfg.FPS, a.cfg.IncludeTray, len(a.targets))
+	log.Printf("pinky running (config: %s, mode: %s, color: %s, opacity: %.2f, fps: %d, include_tray: %v, icon_sensitivity: %.2f, monitors: %d)",
+		a.cfgPath, a.cfg.Mode, a.cfg.Color, a.cfg.Opacity, a.cfg.FPS, a.cfg.IncludeTray, a.cfg.IconSensitivity, len(a.targets))
 
 	var msg win32.MSG
 	for {
@@ -274,6 +323,7 @@ func (a *App) onRescanTick() {
 		t.close()
 	}
 	a.targets = kept
+	a.syncHWNDs()
 }
 
 func (a *App) hideAll() {
@@ -306,7 +356,9 @@ func (a *App) onRenderTick() {
 			continue
 		}
 
-		rect := t.bar.TargetRect(cfg.IncludeTray)
+		// Capture the full taskbar strip; include_tray now only decides which
+		// icon cells get colored, not how much of the bar is captured.
+		rect := t.bar.Rect()
 		if rect.Empty() {
 			t.ov.Hide()
 			continue
@@ -318,10 +370,60 @@ func (a *App) onRenderTick() {
 			continue
 		}
 
-		blend.Apply(frame.Pix, blend.Params{Mode: cfg.Mode, Color: color, Opacity: cfg.Opacity})
+		cells := a.cellsFor(t.bar, rect, cfg.IncludeTray)
+		m := mask.Compute(frame.Pix, int(frame.Width), int(frame.Height), cells, cfg.IconSensitivity)
+		blend.Apply(frame.Pix, m, blend.Params{Mode: cfg.Mode, Color: color, Opacity: cfg.Opacity})
 
 		if err := t.ov.Update(rect, frame.Pix); err != nil {
 			log.Printf("overlay update failed: %v", err)
 		}
 	}
+}
+
+// cellsFor maps the UIA-provided screen-space icon rectangles for a taskbar
+// into strip-local coordinates for the mask, filtering out the system tray
+// band when include_tray is false.
+//
+// It returns nil when no UIA rectangles are available yet, which signals the
+// mask to fall back to whole-strip content detection. When UIA data exists
+// but every cell is filtered out, it returns a non-nil empty slice so the
+// mask stays fully transparent (no fallback).
+func (a *App) cellsFor(bar *taskbar.Bar, capRect win32.RECT, includeTray bool) []mask.Rect {
+	if a.rects == nil {
+		return nil
+	}
+	screen := a.rects.RectsFor(bar.HWND())
+	if len(screen) == 0 {
+		return nil
+	}
+	trayRect, hasTray := bar.TrayRect()
+	return mapCells(screen, capRect, trayRect, hasTray, includeTray)
+}
+
+// mapCells converts screen-space icon rectangles to strip-local mask cells,
+// dropping tray-band cells when they should be excluded. It is a pure helper
+// (no taskbar/UIA dependency) so the selection logic is unit-testable. The
+// returned slice is always non-nil (possibly empty) so the caller can
+// distinguish "UIA selected nothing" from "no UIA data".
+func mapCells(screen []win32.RECT, capRect, trayRect win32.RECT, hasTray, includeTray bool) []mask.Rect {
+	cells := make([]mask.Rect, 0, len(screen))
+	for _, sc := range screen {
+		if !includeTray && hasTray && centerIn(sc, trayRect) {
+			continue
+		}
+		cells = append(cells, mask.Rect{
+			Left:   int(sc.Left - capRect.Left),
+			Top:    int(sc.Top - capRect.Top),
+			Right:  int(sc.Right - capRect.Left),
+			Bottom: int(sc.Bottom - capRect.Top),
+		})
+	}
+	return cells
+}
+
+// centerIn reports whether the center of r lies within region.
+func centerIn(r, region win32.RECT) bool {
+	cx := (r.Left + r.Right) / 2
+	cy := (r.Top + r.Bottom) / 2
+	return cx >= region.Left && cx < region.Right && cy >= region.Top && cy < region.Bottom
 }
