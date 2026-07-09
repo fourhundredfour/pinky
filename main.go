@@ -157,7 +157,7 @@ func main() {
 		if b != nil {
 			if monitor, ok := win32.PrimaryMonitorRect(); ok {
 				if rect, err := b.Reposition(c.Edge, int32(c.Size), monitor); err == nil {
-					window.SetPhysicalBounds(rectToWails(rect))
+					go window.SetPhysicalBounds(rectToWails(rect))
 				}
 			}
 		}
@@ -201,14 +201,16 @@ func main() {
 
 			b, rect, err := appbar.Register(hwnd, cfg.Edge, int32(cfg.Size), monitor, appbar.Callbacks{
 				OnPosChanged: func(rect win32.RECT) {
-					window.SetPhysicalBounds(rectToWails(rect))
+					go window.SetPhysicalBounds(rectToWails(rect))
 				},
 				OnFullScreenApp: func(fullscreen bool) {
-					if fullscreen {
-						window.Hide()
-					} else {
-						window.Show()
-					}
+					go func() {
+						if fullscreen {
+							window.Hide()
+						} else {
+							window.Show()
+						}
+					}()
 				},
 				OnTaskbarRecreated: func() {
 					explorerCtl.Reassert()
@@ -220,7 +222,7 @@ func main() {
 				barMu.Lock()
 				bar = b
 				barMu.Unlock()
-				window.SetPhysicalBounds(rectToWails(rect))
+				go window.SetPhysicalBounds(rectToWails(rect))
 			}
 
 			applyRuntimeConfig(cfg)

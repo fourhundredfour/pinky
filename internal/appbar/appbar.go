@@ -141,8 +141,12 @@ func (b *Bar) Unregister() {
 }
 
 func (b *Bar) subclass() {
+	// Fetch the previous window procedure BEFORE subclassing to avoid race conditions
+	// where messages are dispatched to wndProc before SetWindowLongPtrW returns.
+	b.prevWndProc = win32.GetWindowLongPtrW(b.hwnd, win32.GWLPWndProc)
+
 	proc := windows.NewCallback(b.wndProc)
-	b.prevWndProc = win32.SetWindowLongPtrW(b.hwnd, win32.GWLPWndProc, proc)
+	win32.SetWindowLongPtrW(b.hwnd, win32.GWLPWndProc, proc)
 }
 
 func (b *Bar) unsubclass() {
@@ -170,6 +174,9 @@ func (b *Bar) wndProc(hwnd win32.HWND, msg uint32, wParam, lParam uintptr) uintp
 		if rect, err := b.setPos(); err == nil && b.callbacks.OnPosChanged != nil {
 			b.callbacks.OnPosChanged(rect)
 		}
+	}
+	if b.prevWndProc == 0 {
+		return win32.DefWindowProcW(hwnd, msg, wParam, lParam)
 	}
 	return win32.CallWindowProcW(b.prevWndProc, hwnd, msg, wParam, lParam)
 }

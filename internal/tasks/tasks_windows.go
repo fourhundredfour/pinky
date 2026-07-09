@@ -276,6 +276,10 @@ func NewWatcher(hwnd win32.HWND, pollInterval time.Duration, onChange func()) *W
 	w.shellHookMsg = win32.RegisterWindowMessageW("SHELLHOOK")
 	win32.RegisterShellHookWindow(hwnd)
 
+	// Fetch the previous window procedure BEFORE subclassing to avoid race conditions
+	// where messages are dispatched to wndProc before SetWindowLongPtrW returns.
+	w.prevWndProc = win32.GetWindowLongPtrW(hwnd, win32.GWLPWndProc)
+
 	proc := windows.NewCallback(func(h win32.HWND, msg uint32, wParam, lParam uintptr) uintptr {
 		defer applog.RecoverAndLog("tasks-watcher-wndproc")
 		if w.shellHookMsg != 0 && msg == w.shellHookMsg {
@@ -285,9 +289,12 @@ func NewWatcher(hwnd win32.HWND, pollInterval time.Duration, onChange func()) *W
 				w.trigger()
 			}
 		}
+		if w.prevWndProc == 0 {
+			return win32.DefWindowProcW(h, msg, wParam, lParam)
+		}
 		return win32.CallWindowProcW(w.prevWndProc, h, msg, wParam, lParam)
 	})
-	w.prevWndProc = win32.SetWindowLongPtrW(hwnd, win32.GWLPWndProc, proc)
+	win32.SetWindowLongPtrW(hwnd, win32.GWLPWndProc, proc)
 
 	if pollInterval > 0 {
 		applog.Go("tasks-watcher-poll", func() {
