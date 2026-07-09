@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"unsafe"
 
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/win32"
 )
 
@@ -57,6 +58,7 @@ func newVolumeController() *volumeController {
 }
 
 func (vc *volumeController) run() {
+	defer applog.RecoverAndLog("volume-com-thread")
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
@@ -64,7 +66,10 @@ func (vc *volumeController) run() {
 		// Nothing else can run without COM; drain requests with an error
 		// forever rather than leaving callers blocked.
 		for fn := range vc.reqCh {
-			fn()
+			func() {
+				defer applog.RecoverAndLog("volume-com-drain-request")
+				fn()
+			}()
 		}
 		return
 	}
@@ -72,7 +77,10 @@ func (vc *volumeController) run() {
 	defer vc.release()
 
 	for fn := range vc.reqCh {
-		fn()
+		func() {
+			defer applog.RecoverAndLog("volume-com-request")
+			fn()
+		}()
 	}
 }
 
@@ -134,9 +142,17 @@ func (vc *volumeController) Get() (Volume, error) {
 			return
 		}
 		var level float32
-		win32.ComCall(vc.endpoint, idxAEVGetVolumeScalar, uintptr(unsafe.Pointer(&level)))
+		hr := win32.ComCall(vc.endpoint, idxAEVGetVolumeScalar, uintptr(unsafe.Pointer(&level)))
+		if win32.Failed(hr) {
+			outErr = fmt.Errorf("indicators: GetVolumeScalar failed: 0x%08x", uint32(hr))
+			return
+		}
 		var muted int32
-		win32.ComCall(vc.endpoint, idxAEVGetMute, uintptr(unsafe.Pointer(&muted)))
+		hr = win32.ComCall(vc.endpoint, idxAEVGetMute, uintptr(unsafe.Pointer(&muted)))
+		if win32.Failed(hr) {
+			outErr = fmt.Errorf("indicators: GetMute failed: 0x%08x", uint32(hr))
+			return
+		}
 		result = Volume{Level: float64(level), Muted: muted != 0}
 	})
 	return result, outErr
@@ -144,6 +160,9 @@ func (vc *volumeController) Get() (Volume, error) {
 
 // Set changes the master volume level (clamped to [0,1]).
 func (vc *volumeController) Set(level float64) error {
+	if runtime.GOARCH == "arm64" {
+		return fmt.Errorf("indicators: Set volume is not supported on arm64 due to float ABI limitations")
+	}
 	if level < 0 {
 		level = 0
 	}
@@ -163,7 +182,10 @@ func (vc *volumeController) Set(level float64) error {
 		// uintptr lets the callee's `movss` pick them up correctly. This
 		// does not hold on windows/arm64.
 		bits := uintptr(math.Float32bits(float32(level)))
-		win32.ComCall(vc.endpoint, idxAEVSetVolumeScalar, bits, 0)
+		hr := win32.ComCall(vc.endpoint, idxAEVSetVolumeScalar, bits, 0)
+		if win32.Failed(hr) {
+			outErr = fmt.Errorf("indicators: SetVolumeScalar failed: 0x%08x", uint32(hr))
+		}
 	})
 	return outErr
 }
@@ -178,12 +200,20 @@ func (vc *volumeController) ToggleMute() (bool, error) {
 			return
 		}
 		var muted int32
-		win32.ComCall(vc.endpoint, idxAEVGetMute, uintptr(unsafe.Pointer(&muted)))
+		hr := win32.ComCall(vc.endpoint, idxAEVGetMute, uintptr(unsafe.Pointer(&muted)))
+		if win32.Failed(hr) {
+			outErr = fmt.Errorf("indicators: GetMute failed in ToggleMute: 0x%08x", uint32(hr))
+			return
+		}
 		next := int32(0)
 		if muted == 0 {
 			next = 1
 		}
-		win32.ComCall(vc.endpoint, idxAEVSetMute, uintptr(next), 0)
+		hr = win32.ComCall(vc.endpoint, idxAEVSetMute, uintptr(next), 0)
+		if win32.Failed(hr) {
+			outErr = fmt.Errorf("indicators: SetMute failed: 0x%08x", uint32(hr))
+			return
+		}
 		newMuted = next != 0
 	})
 	return newMuted, outErr

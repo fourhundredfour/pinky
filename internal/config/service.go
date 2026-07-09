@@ -62,6 +62,9 @@ func (s *Service) Save(cfg *Config) error {
 // used by the fsnotify Watcher's onChange callback, since the file is
 // already saved at that point.
 func (s *Service) Apply(cfg *Config) {
+	if cfg == nil {
+		return
+	}
 	s.mu.Lock()
 	s.current = cfg
 	s.mu.Unlock()

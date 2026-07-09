@@ -4,9 +4,12 @@ import (
 	"log"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+
+	"github.com/fourhundredfour/pinky/internal/applog"
 )
 
 // debounceWindow absorbs the burst of WRITE/CHMOD/RENAME events a single
@@ -31,6 +34,7 @@ type Watcher struct {
 	timer *time.Timer
 
 	done chan struct{}
+	closed atomic.Bool
 }
 
 // NewWatcher starts watching path's directory and returns the ready
@@ -52,7 +56,7 @@ func NewWatcher(path string, onChange func(*Config)) (*Watcher, error) {
 		fs:       fs,
 		done:     make(chan struct{}),
 	}
-	go w.loop()
+	applog.Go("config-watcher-loop", w.loop)
 	return w, nil
 }
 
@@ -85,6 +89,9 @@ func (w *Watcher) loop() {
 func (w *Watcher) scheduleReload() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.closed.Load() {
+		return
+	}
 	if w.timer != nil {
 		w.timer.Stop()
 	}
@@ -92,9 +99,16 @@ func (w *Watcher) scheduleReload() {
 }
 
 func (w *Watcher) reload() {
+	defer applog.RecoverAndLog("config-watcher-reload")
+	if w.closed.Load() {
+		return
+	}
 	cfg, err := Load(w.path)
 	if err != nil {
 		log.Printf("config: reload failed, keeping previous settings: %v", err)
+		return
+	}
+	if w.closed.Load() {
 		return
 	}
 	w.onChange(cfg)
@@ -102,6 +116,7 @@ func (w *Watcher) reload() {
 
 // Close stops watching and releases the underlying OS resources.
 func (w *Watcher) Close() error {
+	w.closed.Store(true)
 	close(w.done)
 	w.mu.Lock()
 	if w.timer != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/widget"
 )
 
@@ -52,7 +53,7 @@ func (s *Service) Zone() widget.Zone { return widget.ZoneSystem }
 // Start begins polling every interval. Call Stop on shutdown.
 func (s *Service) Start() error {
 	s.stop = make(chan struct{})
-	go func() {
+	applog.Go("indicators-poll", func() {
 		ticker := time.NewTicker(s.interval)
 		defer ticker.Stop()
 		s.refresh()
@@ -64,7 +65,7 @@ func (s *Service) Start() error {
 				return
 			}
 		}
-	}()
+	})
 	return nil
 }
 

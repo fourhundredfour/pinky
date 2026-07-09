@@ -78,6 +78,17 @@ func (c *Controller) Reassert() {
 	}
 }
 
+// ForceShow unconditionally restores every real taskbar window (primary plus
+// secondary bars) by making them visible, independent of any Controller
+// instance state.
+func ForceShow() {
+	for _, hwnd := range findAll() {
+		if win32.IsWindow(hwnd) {
+			win32.ShowWindow(hwnd, win32.SWShow)
+		}
+	}
+}
+
 // findAll enumerates the primary taskbar plus every currently open
 // secondary (per-monitor) taskbar window.
 func findAll() []win32.HWND {

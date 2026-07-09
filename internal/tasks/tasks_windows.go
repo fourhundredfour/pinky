@@ -9,10 +9,12 @@ import (
 	"image/png"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/windows"
 
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/win32"
 )
 
@@ -138,6 +140,10 @@ func iconToPNGBytes(hicon win32.HICON) ([]byte, error) {
 	defer win32.DeleteObject(win32.HGDIOBJ(info.HbmMask))
 	defer win32.DeleteObject(win32.HGDIOBJ(info.HbmColor))
 
+	if info.HbmColor == 0 {
+		return nil, fmt.Errorf("tasks: monochrome icons not supported")
+	}
+
 	width, height, ok := win32.GetBitmapDimensions(info.HbmColor)
 	if !ok || width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("tasks: GetBitmapDimensions failed")
@@ -255,6 +261,7 @@ type Watcher struct {
 	mu       sync.Mutex
 	timer    *time.Timer
 	onChange func()
+	closed   atomic.Bool
 }
 
 // NewWatcher installs the shell hook and starts the fallback poll ticker.
@@ -270,6 +277,7 @@ func NewWatcher(hwnd win32.HWND, pollInterval time.Duration, onChange func()) *W
 	win32.RegisterShellHookWindow(hwnd)
 
 	proc := windows.NewCallback(func(h win32.HWND, msg uint32, wParam, lParam uintptr) uintptr {
+		defer applog.RecoverAndLog("tasks-watcher-wndproc")
 		if w.shellHookMsg != 0 && msg == w.shellHookMsg {
 			switch wParam & 0x7FFF {
 			case win32.HSHELLWindowCreated, win32.HSHELLWindowDestroyed,
@@ -282,7 +290,7 @@ func NewWatcher(hwnd win32.HWND, pollInterval time.Duration, onChange func()) *W
 	w.prevWndProc = win32.SetWindowLongPtrW(hwnd, win32.GWLPWndProc, proc)
 
 	if pollInterval > 0 {
-		go func() {
+		applog.Go("tasks-watcher-poll", func() {
 			ticker := time.NewTicker(pollInterval)
 			defer ticker.Stop()
 			for {
@@ -293,7 +301,7 @@ func NewWatcher(hwnd win32.HWND, pollInterval time.Duration, onChange func()) *W
 					return
 				}
 			}
-		}()
+		})
 	}
 	return w
 }
@@ -302,22 +310,26 @@ func (w *Watcher) trigger() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	if w.closed.Load() {
+		return
+	}
+
 	if w.timer != nil {
 		w.timer.Stop()
 	}
 	w.timer = time.AfterFunc(50*time.Millisecond, func() {
-		select {
-		case <-w.stop:
+		defer applog.RecoverAndLog("tasks-watcher-debounce")
+		if w.closed.Load() {
 			return
-		default:
-			w.onChange()
 		}
+		w.onChange()
 	})
 }
 
 // Close stops the poll ticker, deregisters the shell hook and restores the
 // original window procedure.
 func (w *Watcher) Close() {
+	w.closed.Store(true)
 	close(w.stop)
 	w.mu.Lock()
 	if w.timer != nil {

@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/config"
 	"github.com/fourhundredfour/pinky/internal/win32"
 )
@@ -157,6 +158,7 @@ func (b *Bar) unsubclass() {
 // handling - every message it does not specifically act on is forwarded
 // unchanged to the previous proc via CallWindowProcW.
 func (b *Bar) wndProc(hwnd win32.HWND, msg uint32, wParam, lParam uintptr) uintptr {
+	defer applog.RecoverAndLog("appbar-wndproc")
 	switch {
 	case msg == appBarCallbackMsg:
 		b.onAppBarNotify(wParam, lParam)

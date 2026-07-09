@@ -8,6 +8,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/widget"
 )
 
@@ -41,7 +42,7 @@ func (s *Service) Zone() widget.Zone { return widget.ZoneSystem }
 // Start begins the once-a-second tick loop. Call Stop on shutdown.
 func (s *Service) Start() error {
 	s.stop = make(chan struct{})
-	go func() {
+	applog.Go("clock-tick", func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		s.emit()
@@ -53,7 +54,7 @@ func (s *Service) Start() error {
 				return
 			}
 		}
-	}()
+	})
 	return nil
 }
 

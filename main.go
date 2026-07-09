@@ -23,6 +23,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/fourhundredfour/pinky/internal/appbar"
+	"github.com/fourhundredfour/pinky/internal/applog"
 	"github.com/fourhundredfour/pinky/internal/clock"
 	"github.com/fourhundredfour/pinky/internal/config"
 	"github.com/fourhundredfour/pinky/internal/explorer"
@@ -48,6 +49,14 @@ func init() {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("CRITICAL PANIC in main: %v\nStack trace:\n%s", r, string(debug.Stack()))
+			explorer.ForceShow()
+			os.Exit(1)
+		}
+	}()
+
 	// Per-Monitor-V2 DPI awareness keeps every rect this program computes
 	// or receives (monitor bounds, AppBar rects, window bounds) in the
 	// same physical-pixel space, with no scale-factor surprises.
@@ -57,6 +66,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("pinky: could not determine config path: %v", err)
 	}
+
+	logPath := filepath.Join(filepath.Dir(configPath), "pinky.log")
+	if err := applog.Init(logPath); err != nil {
+		log.Printf("pinky: failed to initialize logging: %v", err)
+	}
+
+	log.Printf("pinky: starting up...")
+	log.Printf("pinky: config path: %s", configPath)
+	log.Printf("pinky: log path: %s", logPath)
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("pinky: could not load config %q: %v", configPath, err)
@@ -143,7 +162,7 @@ func main() {
 			}
 		}
 
-		if c.HideRealTaskbar {
+		if c.HideRealTaskbar && b != nil {
 			explorerCtl.Hide()
 		} else {
 			explorerCtl.Show()
@@ -217,7 +236,7 @@ func main() {
 			}
 
 			reassertTicker = time.NewTicker(reassertInterval)
-			go func() {
+			applog.Go("reassert-ticker", func() {
 				for {
 					select {
 					case <-reassertTicker.C:
@@ -226,7 +245,7 @@ func main() {
 						return
 					}
 				}
-			}()
+			})
 
 			trayicon.Setup(app, trayicon.Options{
 				ConfigPath: configPath,
